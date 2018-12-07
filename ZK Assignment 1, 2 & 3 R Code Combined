@@ -1,0 +1,291 @@
+rm(list=ls())
+
+library(psych)
+library(dplyr)
+library(gsheet)
+library(ggplot2)
+library(lm.beta)
+library(car)
+library(rgl)
+
+
+#importing data
+data_sample_1 = read.csv("https://raw.githubusercontent.com/kekecsz/PSYP13_Data_analysis_class-2018/master/home_sample_1.csv")
+
+
+data = data_sample_1
+
+
+
+# View data in the data viewer tool 
+View(data)
+
+# or display simple descriptive statistics and plots
+describe(data$age)
+
+
+# histograms
+hist(data$age, breaks = 20)
+
+
+#fixing outliers
+data = data[-which(data[,"age"] == "222"),] #person ID_28 was 222 years old
+data = data[-which(data[,"ID"] == "ID_112"),] #mindfullness score below possible
+data = data[-which(data[,"ID"] == "ID_146"),] #mindfullness score below possible 
+
+
+#checking STAI_trait
+describe(data$STAI_trait)
+hist(data$STAI_trait, breaks = 20)
+
+
+#checking pain_cat
+describe(data$pain_cat)
+hist(data$pain_cat, breaks = 20)
+
+#checking mindfulness
+describe(data$mindfulness)
+hist(data$mindfulness, breaks = 20)
+
+#checking cortisol_serum
+describe(data$cortisol_serum)
+hist(data$cortisol_serum, breaks = 20)
+
+#REMOVED BECAUSE OF VIF #checking cortisol_saliva
+#describe(data$cortisol_saliva)
+#hist(data$cortisol_saliva, breaks = 20)
+
+
+###########################################################
+#                                                         #
+#                   MODEL 1                               #
+#                                                         #
+###########################################################
+
+# Regression model for pain, with age and sex as predictors
+mod1 = lm(pain ~ age + sex, data = data)
+
+# visualize the regression equation in multiple regression
+plot(pain ~ age, data = data)
+abline(lm(pain ~ age, data = data))
+plot(pain ~ grade, sex = data)
+abline(lm(pain ~ sex, data = data))
+
+#summary
+summary(mod1)
+
+#checking linearity
+plot(pain ~ age, data = data) 
+
+plot(pain ~ sex, data = data) # categorical variable 
+
+abline(lm(pain ~ age, data = data))
+
+
+#Cook's distance for Model 1
+plot(mod1, which = 5)
+
+4/nrow(data)
+plot(mod1, which = 4) 
+
+
+
+
+###########################################################
+#                                                         #
+#                   MODEL 2                               #
+#                                                         #
+###########################################################
+
+# Regression model for pain, with age + sex + STAI + pain catastrophizing + mindfulness + cortisol serum (CORTISOL SALIVA REMOVED) as predictors
+mod2 = lm(pain ~ age + sex + STAI_trait + pain_cat + mindfulness + cortisol_serum, data = data)
+
+summary(mod2)
+
+plot(pain ~ age, data = data)
+abline(lm(pain ~ age, data = data))
+
+plot(pain ~ sex, data = data) # categorical variable 
+
+plot(pain ~ STAI_trait, data = data)
+abline(lm(pain ~ STAI_trait, data = data))
+
+plot(pain ~ pain_cat, data = data)
+abline(lm(pain ~ pain_cat, data = data))
+
+plot(pain ~ mindfulness, data = data)
+abline(lm(pain ~ mindfulness, data = data))
+
+plot(pain ~ cortisol_serum, data = data)
+abline(lm(pain ~ cortisol_serum, data = data))
+
+#REMOVED BECAUSE OF VIF #plot(pain ~ cortisol_saliva, data = data)
+#REMOVED BECAUSE OF VIF #abline(lm(pain ~ cortisol_saliva, data = data))
+
+
+#Cook's distance
+plot(mod2, which = 5)
+
+4/nrow(data)
+plot(mod2, which = 4) 
+
+###########################################################
+#                                                         #
+#                  COMPARING MODELS                       #
+#                                                         #
+###########################################################
+
+#running ANOVA for mod1 & mod2
+
+anova(mod1, mod2)
+
+#######Assumptions of linear regression
+
+## Normality
+
+# QQ plot
+plot(mod2, which = 2) #outliers seem to be 100, 56 & 24. Not removing them since the histogram and skew&kurtosis seem within the assumption of normality 
+
+# histogram
+hist(residuals(mod2), breaks = 20) #roughly bell shaped so acceptable
+
+
+# skew and kurtosis
+describe(residuals(mod2)) #skewness and kurtosis not greater than 1, indicating no violation of the assumption of normality 
+
+
+######QQ Plot- removing the outliers in it to just check if it makes a difference
+
+data_nooutliers_QQ = data[-c(100, 56, 24),]
+
+mod3 = lm(pain ~ age + sex + STAI_trait + pain_cat + mindfulness + cortisol_serum + cortisol_saliva, data = data_nooutliers_QQ)
+
+# recheck the assumption of normality of residuals
+describe(residuals(mod3))
+plot(mod3, which = 2)
+hist(residuals(mod3), breaks = 20)
+
+# comparing the models on data with and without the outliers
+summary(mod2)
+summary(mod3)
+
+#difference between the two models is of an adjusted r squared of a mere 0.0231, which indicates that removing the outliers doesn't make a better model.
+
+#USING MOD2 FOR THE FUTURE TESTS OF ASSUMPTIONS
+
+###### Linearity
+
+residualPlots(mod2) #all lines seem relatively flat, the tests are all non significant, so the linearity assumption seems to hold true for our model.
+
+
+###### Homoscedasticty
+
+plot(mod2, which = 3)
+ncvTest(mod2) # NCV test #p value is greater than 0.05, which means that there is NO violation of the assumption of homoscedasticity
+
+
+#installing lmtest package needed for Breush-Pagan test
+
+library(lmtest)
+
+bptest(mod2) # Breush-Pagan test #p value is greater than 0.05, which means that there is NO violation of the assumption of homoscedasticity
+
+###### Multicollinearity
+
+vif(mod2) #VIF is above 3 for cortisol serum and cortisol saliva
+#there is data multicollinearity, since cortisol serum and cortisol saliva are so closely correlated
+#solution is to remove cortisol saliva since cortisol serum is generally considered more indicative of stress
+
+AIC(mod1) #checking AICs
+AIC(mod2)
+
+
+#AAAAAND I'M DONEEEEE TA DAAAAA
+
+if(interactive())
+  curve(ptukey(x, nm = 6, df = 5), from = -1, to = 8, n = 101)
+(ptt <- ptukey(0:10, 2, df =  5))
+(qtt <- qtukey(.95, 2, df =  2:11))
+
+#running tukey test
+
+
+###########################################################
+#                                                         #
+#                  PART TWO                               #
+#                                                         #
+###########################################################
+
+mod4_assignment2 = lm(pain ~ age + sex + STAI_trait + pain_cat + mindfulness + cortisol_serum + weight, data = data)
+
+mod_backwards = step(mod4_assignment2, direction = "backward")
+
+backward_model = lm(pain ~ age + pain_cat + mindfulness + cortisol_serum, data = data)
+
+theorybased_model = lm(pain ~ age + sex + STAI_trait + pain_cat + mindfulness + cortisol_serum, data = data)
+
+summary(mod4_assignment2)
+
+summary(backward_model)
+
+AIC(mod4_assignment2)
+AIC(backward_model)
+
+anova(mod4_assignment2, backward_model)
+
+anova(theorybased_model, backward_model)
+
+summary(theorybased_model)
+
+summary(backward_model)
+
+summary(theorybased_model)$adj.r.squared #BETTER R SQUARED FOR THIS ONE WOOHOO 
+
+summary(backward_model)$adj.r.squared
+
+AIC(theorybased_model)
+
+AIC(backward_model) #AIC lower, hence better
+
+anova(mod4_assignment2, backward_model)
+
+AIC(mod4_assignment2)
+
+AIC(backward_model)
+
+###########################################################
+#                                                         #
+#                TESTING MODELS ON NEW DATA               #
+#                                                         #
+###########################################################
+
+data_sample_2 = read.csv("https://raw.githubusercontent.com/kekecsz/PSYP13_Data_analysis_class-2018/master/home_sample_2.csv")
+
+#fixing outliers
+data_sample_2 = data_sample_2[-which(data[,"ID"] == "ID_123"),] #mindfullness score below possible
+data_sample_2 = data_sample_2[-which(data[,"ID"] == "ID_113"),] #mindfullness score below possible 
+data_sample_2 = data_sample_2[-which(data[,"ID"] == "ID_43"),] #very overweight compared to others 
+
+#lev = hat(model.matrix(theorybased_model)) #mahadaboi test
+#plot(lev)
+#data_sample_2[lev > .10,]
+#N = nrow(data_sample_2)
+#mahad=(n - 1)*(lev-1/N)
+#tail(sort(mahad),5)
+#order(mahad,decreasing=T)[c(5,4,3,2,1)]
+#
+#cook's test for outliers?
+plot(theorybased_model, which = 5)
+4/nrow(data_sample_2)
+plot(theorybased_model, which = 4)
+
+pred_test <- predict (theorybased_model, data_sample_2)
+pred_test_backward <- predict (backward_model, data_sample_2)
+
+RSS_test = sum((data_sample_2[,"pain"] - pred_test)^2)
+RSS_test_back = sum((data_sample_2[,"pain"] - pred_test_backward)^2)
+RSS_test  #results are higher which means theory regression model has more error 
+
+RSS_test_back 
+
+
